@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # FastAPI service
+  api:
+    build: .
+    container_name: mastodon_poll_api
+    hostname: mastodon_poll_provider
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      - CORE_URL=http://nagatha_core:8000/api/v1
+      - PROVIDER_ID=mastodon_poll_provider
+      - PROVIDER_BASE_URL=http://mastodon_poll_provider:9000
+      - QUEUE_NAME=mastodon_polls
+      # Use nagatha_core's RabbitMQ and Redis
+      - BROKER_URL=amqp://guest:guest@nagatha_rabbitmq:5672//
+      - RESULT_BACKEND=redis://nagatha_redis:6379/0
+      - RABBITMQ_HOST=nagatha_rabbitmq
+      - REDIS_HOST=nagatha_redis
+      - WAIT_FOR_SERVICES=true
+    volumes:
+      - .:/app
+    networks:
+      - nagatha_core_nagatha_network
+    restart: unless-stopped
+    entrypoint: ["./docker-entrypoint.sh"]
+    command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+
+  # Celery worker
+  worker:
+    build: .
+    container_name: mastodon_poll_worker
+    env_file:
+      - .env
+    environment:
+      - CORE_URL=http://nagatha_api:8000/api/v1
+      - PROVIDER_ID=mastodon_poll_provider
+      - QUEUE_NAME=mastodon_polls
+      # Use nagatha_core's RabbitMQ and Redis
+      - BROKER_URL=amqp://guest:guest@nagatha_rabbitmq:5672//
+      - RESULT_BACKEND=redis://nagatha_redis:6379/0
+      - RABBITMQ_HOST=nagatha_rabbitmq
+      - REDIS_HOST=nagatha_redis
+      - WAIT_FOR_SERVICES=true
+    volumes:
+      - .:/app
+    depends_on:
+      - api
+    networks:
+      - nagatha_core_nagatha_network
+    restart: unless-stopped
+    entrypoint: ["./docker-entrypoint.sh"]
+    command: ["celery", "-A", "tasks.app", "worker", "--loglevel=info", "--queues=mastodon_polls"]
+
+  # Registration service
+  registration:
+    build: .
+    container_name: mastodon_poll_registration
+    env_file:
+      - .env
+    environment:
+      - CORE_URL=http://nagatha_api:8000/api/v1
+      - PROVIDER_ID=mastodon_poll_provider
+      - PROVIDER_BASE_URL=http://mastodon_poll_provider:9000
+    depends_on:
+      - api
+    networks:
+      - nagatha_core_nagatha_network
+    restart: unless-stopped
+    command: ["python", "register.py"]
+
+networks:
+  nagatha_core_nagatha_network:
+    external: true

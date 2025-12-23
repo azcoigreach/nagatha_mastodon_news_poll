@@ -1,0 +1,107 @@
+# Alternative docker-compose for standalone deployment (without external nagatha_core)
+version: '3.8'
+
+services:
+  # FastAPI service
+  api:
+    build: .
+    container_name: mastodon_poll_api
+    hostname: mastodon_poll_provider
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      - PROVIDER_ID=mastodon_poll_provider
+      - PROVIDER_BASE_URL=http://mastodon_poll_provider:9000
+      - QUEUE_NAME=mastodon_polls
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - RESULT_BACKEND=redis://redis:6379/0
+      - WAIT_FOR_SERVICES=true
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app_network
+    restart: unless-stopped
+    entrypoint: ["./docker-entrypoint.sh"]
+    command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+
+  # Celery worker
+  worker:
+    build: .
+    container_name: mastodon_poll_worker
+    env_file:
+      - .env
+    environment:
+      - PROVIDER_ID=mastodon_poll_provider
+      - QUEUE_NAME=mastodon_polls
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - RESULT_BACKEND=redis://redis:6379/0
+      - WAIT_FOR_SERVICES=true
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    networks:
+      - app_network
+    restart: unless-stopped
+    entrypoint: ["./docker-entrypoint.sh"]
+    command: ["celery", "-A", "tasks.app", "worker", "--loglevel=info", "--queues=mastodon_polls"]
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: mastodon_poll_rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: mastodon_poll_redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  redis_data:
