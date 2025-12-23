@@ -267,7 +267,7 @@
                         {{ post.content|safe }}
                     </div>
                     <div class="post-meta">
-                        <span data-timestamp="{{ post.created_at.isoformat() }}Z">{{ post.created_at }}</span>
+                        <span data-timestamp="{{ post.created_at }}">{{ post.created_at }}</span>
                         {% if post.url %}
                         • <a href="{{ post.url }}" target="_blank" class="text-decoration-none">
                             <i class="bi bi-box-arrow-up-right"></i> View original
