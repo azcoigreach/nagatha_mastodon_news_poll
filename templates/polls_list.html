@@ -121,6 +121,11 @@
                                         onclick="quickPost('{{ poll.id }}')" title="Post to Mastodon">
                                     <i class="bi bi-send"></i>
                                 </button>
+                                {% elif poll.status == 'rejected' %}
+                                <button type="button" class="btn btn-outline-secondary" 
+                                        onclick="quickRestore('{{ poll.id }}')" title="Restore to Pending">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
                                 {% endif %}
                             </div>
                         </td>
@@ -244,6 +249,21 @@ async function quickPost(pollId) {
             setTimeout(() => location.reload(), 1000);
         } else {
             alert('Failed to post poll: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function quickRestore(pollId) {
+    if (!confirm('Restore this poll to pending for re-review?')) return;
+    try {
+        const response = await fetch(`/polls-ui/${pollId}/restore`, { method: 'POST' });
+        if (response.ok) {
+            location.reload();
+        } else {
+            const data = await response.json().catch(() => ({}));
+            alert('Failed to restore poll: ' + (data.detail || 'Unknown error'));
         }
     } catch (error) {
         alert('Error: ' + error.message);

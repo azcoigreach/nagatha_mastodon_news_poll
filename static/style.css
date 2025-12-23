@@ -1,102 +1,313 @@
-/* Custom styles for Mastodon Poll Manager */
+/* Dark theme for Mastodon Poll Manager */
 
 :root {
-    --mastodon-purple: #6364ff;
-    --mastodon-bg: #282c37;
+    --bg: #0b1221;
+    --surface: #111a2c;
+    --surface-2: #16233a;
+    --border: #1f2f4a;
+    --text: #e5eaf5;
+    --muted: #9fb3d4;
+    --accent: #7dd3fc;
+    --accent-strong: #f97316;
+    --success: #22c55e;
+    --warning: #fbbf24;
+    --danger: #f43f5e;
+    --info: #38bdf8;
 }
 
 body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background: radial-gradient(circle at 10% 20%, rgba(59,130,246,0.08), transparent 25%),
+                radial-gradient(circle at 80% 0%, rgba(16,185,129,0.08), transparent 22%),
+                var(--bg);
+    color: var(--text);
+}
+
+a {
+    color: var(--accent);
+}
+
+a:hover {
+    color: #bef0ff;
 }
 
 main {
     flex: 1;
 }
 
+.text-muted {
+    color: var(--muted) !important;
+}
+
+.app-navbar {
+    background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 50%, #0b1221 100%);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.app-navbar .navbar-brand,
+.app-navbar .nav-link {
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.app-navbar .nav-link.active,
+.app-navbar .nav-link:hover {
+    color: #0b1221;
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+}
+
+.navbar-toggler {
+    border-color: var(--border);
+}
+
+.navbar-toggler-icon {
+    filter: brightness(0) invert(1);
+}
+
+.app-footer {
+    background: #0f172a;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    border-radius: 14px;
+}
+
+.card-header {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 14px 14px 0 0;
+}
+
+.card .list-group-item {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.bg-primary {
+    background-color: var(--accent) !important;
+    color: #0b1221 !important;
+}
+
+.bg-info {
+    background-color: #22d3ee !important;
+    color: #0b1221 !important;
+}
+
+.table {
+    color: var(--text);
+    --bs-table-bg: var(--surface);
+    --bs-table-striped-bg: #0f192d;
+    --bs-table-striped-color: var(--text);
+    --bs-table-hover-bg: rgba(125,211,252,0.08);
+    --bs-table-hover-color: var(--text);
+    border-color: var(--border);
+}
+
+.table thead th {
+    color: var(--muted);
+    border-color: var(--border);
+}
+
+.table tbody td {
+    border-color: var(--border);
+}
+
+/* Ensure table text stays readable on dark surfaces */
+.table> :not(caption)>*>* {
+    color: var(--text) !important;
+}
+
+.poll-table tbody td strong,
+.poll-table tbody td small,
+.poll-table tbody td {
+    color: var(--text) !important;
+}
+
+.poll-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.poll-table tbody tr:hover {
+    background-color: rgba(125,211,252,0.08);
+}
+
+.form-control,
+textarea,
+select {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+.form-control:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 0.2rem rgba(125,211,252,0.25);
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+.form-control::placeholder,
+textarea::placeholder {
+    color: var(--muted);
+}
+
+.btn-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    color: #0b1221;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    background-color: #5ec6ef;
+    border-color: #5ec6ef;
+    color: #06101f;
+}
+
+.btn-outline-primary {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-outline-primary:hover {
+    background: var(--accent);
+    color: #0b1221;
+}
+
+.btn-outline-info {
+    color: var(--info);
+    border-color: var(--info);
+}
+
+.btn-outline-info:hover {
+    background: var(--info);
+    color: #0b1221;
+}
+
+.btn-outline-success {
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.btn-outline-success:hover {
+    background: var(--success);
+    color: #0b1221;
+}
+
+.btn-outline-danger {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.btn-outline-danger:hover {
+    background: var(--danger);
+    color: #0b1221;
+}
+
 /* Status badges */
 .badge-pending {
-    background-color: #ffc107;
-    color: #000;
+    background-color: var(--warning);
+    color: #1f1b0b;
 }
 
 .badge-approved {
-    background-color: #28a745;
+    background-color: var(--success);
+    color: #04100a;
 }
 
 .badge-rejected {
-    background-color: #6c757d;
+    background-color: #6b7280;
+    color: #0b1221;
 }
 
 .badge-posted {
-    background-color: #17a2b8;
+    background-color: var(--info);
+    color: #062230;
 }
 
 .badge-failed {
-    background-color: #dc3545;
+    background-color: var(--danger);
+    color: #0b0b0b;
 }
 
 /* Poll preview styling (Mastodon-like) */
 .poll-preview {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
     padding: 1rem;
     margin: 1rem 0;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
 
 .poll-preview .poll-question {
     font-size: 1.1rem;
-    font-weight: 500;
+    font-weight: 600;
     margin-bottom: 1rem;
-    color: #212529;
+    color: var(--text);
 }
 
 .poll-preview .poll-option {
-    background: #fff;
-    border: 2px solid #e1e8ed;
-    border-radius: 4px;
+    background: var(--surface);
+    border: 2px solid #1f2f4a;
+    border-radius: 6px;
     padding: 0.75rem 1rem;
     margin-bottom: 0.5rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    color: var(--text);
 }
 
 .poll-preview .poll-option:hover {
-    border-color: var(--mastodon-purple);
-    background: #f0f0ff;
+    border-color: var(--accent);
+    background: rgba(125,211,252,0.08);
 }
 
 .poll-preview .poll-meta {
-    color: #6c757d;
+    color: var(--muted);
     font-size: 0.875rem;
     margin-top: 0.75rem;
 }
 
 /* Source posts preview */
 .source-post {
-    background: #fff;
-    border-left: 4px solid var(--mastodon-purple);
+    background: var(--surface);
+    border-left: 4px solid var(--accent);
     padding: 1rem;
     margin-bottom: 1rem;
-    border-radius: 4px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: 6px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
 }
 
 .source-post .post-author {
     font-weight: 600;
-    color: var(--mastodon-purple);
+    color: var(--accent);
     margin-bottom: 0.5rem;
 }
 
 .source-post .post-content {
-    color: #212529;
+    color: var(--text);
     line-height: 1.6;
 }
 
 .source-post .post-meta {
-    color: #6c757d;
+    color: var(--muted);
     font-size: 0.875rem;
     margin-top: 0.5rem;
 }
@@ -104,16 +315,16 @@ main {
 /* Character counter */
 .char-counter {
     font-size: 0.875rem;
-    color: #6c757d;
+    color: var(--muted);
 }
 
 .char-counter.warning {
-    color: #ffc107;
+    color: var(--warning);
     font-weight: 600;
 }
 
 .char-counter.danger {
-    color: #dc3545;
+    color: var(--danger);
     font-weight: 600;
 }
 
@@ -125,34 +336,57 @@ main {
 
 .stat-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    box-shadow: 0 12px 25px rgba(0,0,0,0.35);
 }
 
 .stat-card.stat-pending {
-    border-left-color: #ffc107;
+    border-left-color: var(--warning);
 }
 
 .stat-card.stat-approved {
-    border-left-color: #28a745;
+    border-left-color: var(--success);
 }
 
 .stat-card.stat-posted {
-    border-left-color: #17a2b8;
+    border-left-color: var(--info);
 }
 
 .stat-card.stat-total {
-    border-left-color: var(--mastodon-purple);
+    border-left-color: var(--accent);
 }
 
-/* Poll list table */
-.poll-table tbody tr {
-    cursor: pointer;
-    transition: background-color 0.2s;
+/* Alerts */
+.alert {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
 }
 
-.poll-table tbody tr:hover {
-    background-color: #f8f9fa;
+.alert-info {
+    background: rgba(56,189,248,0.12);
+    border-color: var(--info);
+    color: #e0f2fe;
 }
+
+.alert-danger {
+    background: rgba(244,63,94,0.12);
+    border-color: var(--danger);
+    color: #ffe4e6;
+}
+
+.alert-success {
+    background: rgba(34,197,94,0.12);
+    border-color: var(--success);
+    color: #dcfce7;
+}
+
+.alert-warning {
+    background: rgba(251,191,36,0.14);
+    border-color: var(--warning);
+    color: #fef08a;
+}
+
+/* Poll list table hover colors already handled above */
 
 /* Loading spinner */
 .htmx-indicator {

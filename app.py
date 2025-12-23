@@ -392,6 +392,39 @@ async def moderate_poll(poll_id: str, moderation: ModerationRequest) -> Dict[str
     }
 
 
+@app.post("/polls/{poll_id}/restore")
+async def restore_rejected_poll(poll_id: str) -> Dict[str, Any]:
+    """
+    Restore a rejected poll back to pending for re-review.
+    """
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Poll {poll_id} not found"
+        )
+    
+    if poll.status != PollStatus.REJECTED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only rejected polls can be restored to pending"
+        )
+    
+    old_status = poll.status
+    poll.status = PollStatus.PENDING
+    poll.moderated_at = None
+    poll.updated_at = datetime.utcnow()
+    
+    storage.update_poll_status(poll_id, old_status, poll.status)
+    storage.save_poll(poll)
+    
+    return {
+        "success": True,
+        "poll": poll.model_dump(),
+        "message": "Poll restored to pending"
+    }
+
+
 @app.delete("/polls/{poll_id}")
 async def delete_poll(poll_id: str) -> Dict[str, Any]:
     """
@@ -771,6 +804,34 @@ async def moderate_poll_ui(
     success = storage.update_poll(poll)
     if not success:
         flash_message(request, "Failed to update poll status", "danger")
+    
+    return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+
+
+@app.post("/polls-ui/{poll_id}/restore")
+async def restore_poll_ui(request: Request, poll_id: str):
+    """Restore a rejected poll back to pending from the UI."""
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        flash_message(request, f"Poll {poll_id} not found", "danger")
+        return RedirectResponse(url="/polls-ui", status_code=303)
+    
+    if poll.status != PollStatus.REJECTED:
+        flash_message(request, "Only rejected polls can be restored", "warning")
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+    
+    old_status = poll.status
+    poll.status = PollStatus.PENDING
+    poll.moderated_at = None
+    poll.updated_at = datetime.utcnow()
+    
+    storage.update_poll_status(poll_id, old_status, poll.status)
+    success = storage.save_poll(poll)
+    
+    if success:
+        flash_message(request, "Poll restored to pending", "success")
+    else:
+        flash_message(request, "Failed to restore poll", "danger")
     
     return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
 

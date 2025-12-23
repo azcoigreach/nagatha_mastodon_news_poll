@@ -198,6 +198,24 @@
             </div>
         </div>
         {% endif %}
+
+        {% if poll.status == 'rejected' %}
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-arrow-counterclockwise"></i> Restore Poll</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">This poll was rejected. Restore it to pending to edit or re-approve.</p>
+                <form method="post" action="/polls-ui/{{ poll.id }}/restore">
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-arrow-counterclockwise"></i> Restore to Pending
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
     </div>
     
     <!-- Right Column: Preview & Source Posts -->
