@@ -118,16 +118,16 @@
                 <div class="row text-muted small">
                     <div class="col-6">
                         <strong>Created:</strong><br>
-                        <span data-timestamp="{{ poll.created_at }}">{{ poll.created_at }}</span>
+                        <span data-timestamp="{{ poll.created_at.isoformat() }}Z">{{ poll.created_at }}</span>
                     </div>
                     <div class="col-6">
                         <strong>Updated:</strong><br>
-                        <span data-timestamp="{{ poll.updated_at }}">{{ poll.updated_at }}</span>
+                        <span data-timestamp="{{ poll.updated_at.isoformat() }}Z">{{ poll.updated_at }}</span>
                     </div>
                     {% if poll.moderated_at %}
                     <div class="col-12 mt-2">
                         <strong>Moderated:</strong><br>
-                        <span data-timestamp="{{ poll.moderated_at }}">{{ poll.moderated_at }}</span>
+                        <span data-timestamp="{{ poll.moderated_at.isoformat() }}Z">{{ poll.moderated_at }}</span>
                     </div>
                     {% endif %}
                 </div>
@@ -267,7 +267,7 @@
                         {{ post.content|safe }}
                     </div>
                     <div class="post-meta">
-                        <span data-timestamp="{{ post.created_at }}">{{ post.created_at }}</span>
+                        <span data-timestamp="{{ post.created_at.isoformat() }}Z">{{ post.created_at }}</span>
                         {% if post.url %}
                         • <a href="{{ post.url }}" target="_blank" class="text-decoration-none">
                             <i class="bi bi-box-arrow-up-right"></i> View original

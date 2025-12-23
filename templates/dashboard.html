@@ -164,7 +164,7 @@
                                     <span class="badge badge-{{ poll.status }}">{{ poll.status.upper() }}</span>
                                 </td>
                                 <td>
-                                    <small data-timestamp="{{ poll.created_at }}">{{ poll.created_at }}</small>
+                                    <small data-timestamp="{{ poll.created_at.isoformat() }}Z">{{ poll.created_at }}</small>
                                 </td>
                                 <td>
                                     <a href="/polls-ui/{{ poll.id }}" class="btn btn-sm btn-outline-primary">

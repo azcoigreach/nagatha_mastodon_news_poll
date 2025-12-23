@@ -145,6 +145,24 @@ def generate_poll_ideas(posts: List[Dict[str, Any]], settings_override: Dict[str
                 if hasattr(app_settings, key):
                     setattr(app_settings, key, value)
         
+        # Extract hashtags from source posts
+        source_hashtags = set()
+        for post in posts[:50]:
+            post_tags = post.get('hashtags', [])
+            if isinstance(post_tags, list):
+                for tag in post_tags:
+                    # Ensure hashtag has # prefix
+                    formatted_tag = tag if tag.startswith('#') else f'#{tag}'
+                    source_hashtags.add(formatted_tag)
+        
+        # Use most common hashtags from source posts, fall back to app settings
+        if source_hashtags:
+            poll_hashtags = list(source_hashtags)[:3]  # Limit to 3 hashtags to save space
+        else:
+            poll_hashtags = app_settings.hashtags[:3]
+        
+        logger.info(f"Using hashtags for polls: {poll_hashtags}")
+        
         # Prepare post content for LLM
         posts_text = "\n\n".join([
             f"Post {i+1} by @{post.get('account_username', 'unknown')}:\n{post.get('content', '')}"
@@ -195,10 +213,11 @@ def generate_poll_ideas(posts: List[Dict[str, Any]], settings_override: Dict[str
             if not question or not options or len(options) < 2:
                 continue
             
-            # Create poll data
+            # Create poll data with hashtags
             poll_data = PollData(
                 question=question[:100],  # Mastodon limit
-                options=[PollOption(text=opt[:50]) for opt in options[:4]]  # Max 4 options, 50 chars each
+                options=[PollOption(text=opt[:50]) for opt in options[:4]],  # Max 4 options, 50 chars each
+                hashtags=poll_hashtags  # Add extracted hashtags
             )
             
             # Create poll record
@@ -259,13 +278,19 @@ def post_poll_to_mastodon(poll_id: str) -> Dict[str, Any]:
         # Get Mastodon client
         mastodon = get_mastodon_client()
         
-        # Create poll
+        # Create poll with hashtags inline
         poll_data = poll_record.poll_data
         options = [opt.text for opt in poll_data.options]
         
+        # Format hashtags inline with question to save character space
+        hashtags_str = " ".join(poll_data.hashtags) if poll_data.hashtags else ""
+        status_text = f"{poll_data.question} {hashtags_str}".strip()
+        
+        logger.info(f"Posting poll with text: {status_text}")
+        
         # Post status with poll
         status = mastodon.status_post(
-            status=poll_data.question,
+            status=status_text,
             poll={
                 'options': options,
                 'expires_in': poll_data.duration_hours * 3600,  # Convert hours to seconds

@@ -182,24 +182,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Helper function to format timestamps
 function formatTimestamp(isoString) {
-    const date = new Date(isoString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    try {
+        // Ensure timestamp is treated as UTC; backend sends naive ISO strings
+        const normalized = isoString.endsWith('Z') ? isoString : `${isoString}Z`;
+        const date = new Date(normalized);
+        if (isNaN(date.getTime())) {
+            console.error('Invalid timestamp:', isoString);
+            return 'unknown';
+        }
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    } catch(e) {
+        console.error('Error parsing timestamp:', isoString, e);
+        return 'unknown';
+    }
 }
 
 // Update all timestamps on page
 function updateTimestamps() {
-    document.querySelectorAll('[data-timestamp]').forEach(element => {
+    const elements = document.querySelectorAll('[data-timestamp]');
+    console.log(`Updating ${elements.length} timestamps`);
+    elements.forEach(element => {
         const timestamp = element.getAttribute('data-timestamp');
-        element.textContent = formatTimestamp(timestamp);
+        const formatted = formatTimestamp(timestamp);
+        console.log(`Timestamp: ${timestamp} -> ${formatted}`);
+        element.textContent = formatted;
     });
 }
 

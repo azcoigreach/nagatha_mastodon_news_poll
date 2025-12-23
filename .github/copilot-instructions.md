@@ -31,6 +31,18 @@ curl http://localhost:9000/polls?status_filter=pending
 curl -X POST http://localhost:9000/polls/{poll_id}/moderate -d '{"approved": true}' -H "Content-Type: application/json"
 ```
 
+### Frontend/UI Integration
+The web UI communicates with the API via REST endpoints. When changes are made:
+1. **Settings updates** (`PUT /settings`) → saved to Redis immediately → UI polls `/settings` to reflect changes
+2. **Poll moderation** (`POST /polls/{poll_id}/moderate`) → status updated in Redis → UI refreshes via `GET /polls`
+3. **Task execution** (`POST /run-cycle`) → returns `task_id` → UI polls `/polls?status_filter=pending` to show new polls as they're generated
+4. **Poll edits** (`PUT /polls/{poll_id}`) → updated in Redis → reflected in next `GET /polls/{poll_id}` call
+
+**Important**: All changes are **eventually consistent** through Redis. For immediate UI updates, the frontend should:
+- After POST/PUT, refresh specific endpoints (`GET /polls/{poll_id}` after edit, `GET /polls` after moderation)
+- For async tasks, poll `/polls?status_filter=pending` every 2-3 seconds until generation completes
+- Cache API responses locally but invalidate on user actions (edit, moderate, create)
+
 ## Project-Specific Patterns
 
 ### Poll Status Machine

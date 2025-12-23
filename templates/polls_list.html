@@ -93,11 +93,11 @@
                             </small>
                         </td>
                         <td>
-                            <small data-timestamp="{{ poll.created_at }}">{{ poll.created_at }}</small>
+                            <small data-timestamp="{{ poll.created_at.isoformat() }}Z">{{ poll.created_at }}</small>
                             {% if poll.moderated_at %}
                             <br>
                             <small class="text-muted">
-                                Moderated: <span data-timestamp="{{ poll.moderated_at }}">{{ poll.moderated_at }}</span>
+                                Moderated: <span data-timestamp="{{ poll.moderated_at.isoformat() }}Z">{{ poll.moderated_at }}</span>
                             </small>
                             {% endif %}
                         </td>

@@ -35,6 +35,7 @@ class PollData(BaseModel):
     question: str
     options: List[PollOption]
     duration_hours: int = Field(default=24, ge=1, le=168)  # 1 hour to 7 days
+    hashtags: List[str] = []  # Hashtags to include inline with the poll
     
 
 class PollRecord(BaseModel):
