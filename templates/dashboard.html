@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Mastodon Poll Manager{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+        <p class="text-muted">Monitor and manage your Mastodon poll generation workflow</p>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card stat-total">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Total Polls</h6>
+                        <h2 class="card-title mb-0">{{ stats.total_polls }}</h2>
+                    </div>
+                    <i class="bi bi-bar-chart-fill text-primary" style="font-size: 2rem;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card stat-pending">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Pending Review</h6>
+                        <h2 class="card-title mb-0">{{ stats.by_status.get('pending', 0) }}</h2>
+                    </div>
+                    <i class="bi bi-clock-history text-warning" style="font-size: 2rem;"></i>
+                </div>
+                <a href="/polls-ui?status=pending" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card stat-approved">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Approved</h6>
+                        <h2 class="card-title mb-0">{{ stats.by_status.get('approved', 0) }}</h2>
+                    </div>
+                    <i class="bi bi-check-circle text-success" style="font-size: 2rem;"></i>
+                </div>
+                <a href="/polls-ui?status=approved" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="card stat-card stat-posted">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="card-subtitle mb-2 text-muted">Posted</h6>
+                        <h2 class="card-title mb-0">{{ stats.by_status.get('posted', 0) }}</h2>
+                    </div>
+                    <i class="bi bi-send-check text-info" style="font-size: 2rem;"></i>
+                </div>
+                <a href="/polls-ui?status=posted" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-lightning-fill"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <form id="run-cycle-form" class="row g-3">
+                    <div class="col-md-8">
+                        <label for="hashtags" class="form-label">Hashtags to Monitor</label>
+                        <input type="text" class="form-control" id="hashtags" name="hashtags" 
+                               value="{{ current_settings.hashtags|join(', ') }}" 
+                               placeholder="#uspol, #news, #politics">
+                        <small class="form-text text-muted">Comma-separated list of hashtags</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="post-limit" class="form-label">Post Limit</label>
+                        <input type="number" class="form-control" id="post-limit" name="limit" 
+                               value="{{ current_settings.post_limit }}" min="10" max="500">
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-play-circle"></i> Run News Cycle
+                        </button>
+                        <span class="ms-3 htmx-indicator">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            Processing...
+                        </span>
+                    </div>
+                </form>
+                
+                <div id="task-result" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Status Summary</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Rejected
+                        <span class="badge badge-rejected rounded-pill">{{ stats.by_status.get('rejected', 0) }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Failed
+                        <span class="badge badge-failed rounded-pill">{{ stats.by_status.get('failed', 0) }}</span>
+                    </li>
+                    <li class="list-group-item">
+                        <a href="/polls-ui" class="btn btn-sm btn-outline-primary w-100">
+                            <i class="bi bi-list-check"></i> View All Polls
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity (if available) -->
+{% if recent_polls %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history"></i> Recent Polls</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Question</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for poll in recent_polls %}
+                            <tr>
+                                <td>
+                                    <strong>{{ poll.poll_data.question[:80] }}{% if poll.poll_data.question|length > 80 %}...{% endif %}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge badge-{{ poll.status }}">{{ poll.status.upper() }}</span>
+                                </td>
+                                <td>
+                                    <small data-timestamp="{{ poll.created_at }}">{{ poll.created_at }}</small>
+                                </td>
+                                <td>
+                                    <a href="/polls-ui/{{ poll.id }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('run-cycle-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const hashtags = document.getElementById('hashtags').value
+        .split(',')
+        .map(h => h.trim())
+        .filter(h => h.length > 0);
+    const limit = parseInt(document.getElementById('post-limit').value);
+    
+    const resultDiv = document.getElementById('task-result');
+    resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Starting news cycle...</div>';
+    
+    try {
+        const response = await fetch('/run-cycle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hashtags, limit })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> News cycle started successfully!
+                    <br><small>Task ID: ${data.task_id}</small>
+                    <br><small class="text-muted">New polls will appear in the moderation queue when ready.</small>
+                </div>
+            `;
+            
+            // Reload stats after a few seconds
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle"></i> Error: ${data.detail || 'Failed to start news cycle'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> Network error: ${error.message}
+            </div>
+        `;
+    }
+});
+</script>
+{% endblock %}

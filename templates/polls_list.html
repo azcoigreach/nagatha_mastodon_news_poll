@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}Moderation Queue - Mastodon Poll Manager{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-list-check"></i> Moderation Queue</h1>
+        <p class="text-muted">Review, edit, and approve polls for posting</p>
+    </div>
+</div>
+
+<!-- Status Filter Tabs -->
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link {% if not status_filter or status_filter == 'all' %}active{% endif %}" 
+           href="/polls-ui">
+            All <span class="badge bg-secondary">{{ total_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if status_filter == 'pending' %}active{% endif %}" 
+           href="/polls-ui?status=pending">
+            Pending <span class="badge bg-warning text-dark">{{ pending_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if status_filter == 'approved' %}active{% endif %}" 
+           href="/polls-ui?status=approved">
+            Approved <span class="badge bg-success">{{ approved_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if status_filter == 'posted' %}active{% endif %}" 
+           href="/polls-ui?status=posted">
+            Posted <span class="badge bg-info">{{ posted_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if status_filter == 'rejected' %}active{% endif %}" 
+           href="/polls-ui?status=rejected">
+            Rejected <span class="badge bg-secondary">{{ rejected_count }}</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if status_filter == 'failed' %}active{% endif %}" 
+           href="/polls-ui?status=failed">
+            Failed <span class="badge bg-danger">{{ failed_count }}</span>
+        </a>
+    </li>
+</ul>
+
+<!-- Polls Table -->
+{% if polls %}
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover poll-table">
+                <thead>
+                    <tr>
+                        <th style="width: 10%">Status</th>
+                        <th style="width: 45%">Question</th>
+                        <th style="width: 15%">Options</th>
+                        <th style="width: 15%">Created</th>
+                        <th style="width: 15%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for poll in polls %}
+                    <tr onclick="window.location='/polls-ui/{{ poll.id }}';" style="cursor: pointer;">
+                        <td>
+                            <span class="badge badge-{{ poll.status }}">
+                                {{ poll.status.upper() }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong>{{ poll.poll_data.question[:100] }}{% if poll.poll_data.question|length > 100 %}...{% endif %}</strong>
+                            {% if poll.mastodon_post_url %}
+                            <br>
+                            <a href="{{ poll.mastodon_post_url }}" target="_blank" class="text-muted small" 
+                               onclick="event.stopPropagation();">
+                                <i class="bi bi-box-arrow-up-right"></i> View on Mastodon
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% for option in poll.poll_data.options %}
+                                    {% if option.text %}
+                                        • {{ option.text[:20] }}{% if option.text|length > 20 %}...{% endif %}<br>
+                                    {% endif %}
+                                {% endfor %}
+                            </small>
+                        </td>
+                        <td>
+                            <small data-timestamp="{{ poll.created_at }}">{{ poll.created_at }}</small>
+                            {% if poll.moderated_at %}
+                            <br>
+                            <small class="text-muted">
+                                Moderated: <span data-timestamp="{{ poll.moderated_at }}">{{ poll.moderated_at }}</span>
+                            </small>
+                            {% endif %}
+                        </td>
+                        <td onclick="event.stopPropagation();">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="/polls-ui/{{ poll.id }}" class="btn btn-outline-primary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                
+                                {% if poll.status == 'pending' %}
+                                <button type="button" class="btn btn-outline-success" 
+                                        onclick="quickApprove('{{ poll.id }}')" title="Quick Approve">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" 
+                                        onclick="quickReject('{{ poll.id }}')" title="Quick Reject">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                                {% elif poll.status == 'approved' %}
+                                <button type="button" class="btn btn-outline-info" 
+                                        onclick="quickPost('{{ poll.id }}')" title="Post to Mastodon">
+                                    <i class="bi bi-send"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <nav aria-label="Poll pagination">
+            <ul class="pagination justify-content-center mt-4">
+                {% if current_page > 1 %}
+                <li class="page-item">
+                    <a class="page-link" href="?status={{ status_filter or 'all' }}&page={{ current_page - 1 }}">Previous</a>
+                </li>
+                {% endif %}
+                
+                {% for page_num in range(1, total_pages + 1) %}
+                    {% if page_num == current_page %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_num }}</span>
+                    </li>
+                    {% elif page_num <= 3 or page_num > total_pages - 3 or (page_num >= current_page - 1 and page_num <= current_page + 1) %}
+                    <li class="page-item">
+                        <a class="page-link" href="?status={{ status_filter or 'all' }}&page={{ page_num }}">{{ page_num }}</a>
+                    </li>
+                    {% elif page_num == 4 or page_num == total_pages - 3 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if current_page < total_pages %}
+                <li class="page-item">
+                    <a class="page-link" href="?status={{ status_filter or 'all' }}&page={{ current_page + 1 }}">Next</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> No polls found
+    {% if status_filter and status_filter != 'all' %}
+        with status "{{ status_filter }}".
+    {% else %}
+        in the system.
+    {% endif %}
+    
+    {% if not status_filter or status_filter == 'pending' %}
+    <br><br>
+    <a href="/" class="btn btn-primary">
+        <i class="bi bi-play-circle"></i> Run News Cycle to Generate Polls
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function quickApprove(pollId) {
+    if (!confirm('Approve this poll?')) return;
+    
+    try {
+        const response = await fetch(`/polls-ui/${pollId}/moderate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ approved: 'true', notes: 'Quick approved from list' })
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('Failed to approve poll');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function quickReject(pollId) {
+    const notes = prompt('Reason for rejection (optional):');
+    if (notes === null) return; // Cancelled
+    
+    try {
+        const response = await fetch(`/polls-ui/${pollId}/moderate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ approved: 'false', notes: notes || 'Rejected from list' })
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('Failed to reject poll');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function quickPost(pollId) {
+    if (!confirm('Post this poll to Mastodon now?')) return;
+    
+    try {
+        const response = await fetch(`/polls-ui/${pollId}/post`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('Poll posted successfully! Task ID: ' + data.task_id);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('Failed to post poll: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

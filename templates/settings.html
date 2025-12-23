@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Mastodon Poll Manager{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="bi bi-gear"></i> Application Settings</h1>
+        <p class="text-muted">Configure poll generation and LLM behavior</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <form method="post" action="/settings-ui/update" id="settings-form">
+            <!-- Hashtag Configuration -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-hash"></i> Hashtag Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="hashtags" class="form-label">Monitored Hashtags *</label>
+                        <div id="hashtag-inputs">
+                            {% for hashtag in settings.hashtags %}
+                            <div class="input-group mb-2 hashtag-input-group">
+                                <span class="input-group-text">#</span>
+                                <input type="text" class="form-control hashtag-input" name="hashtags" 
+                                       value="{{ hashtag.lstrip('#') }}" placeholder="uspol" required>
+                                <button type="button" class="btn btn-outline-danger" onclick="removeHashtag(this)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addHashtag()">
+                            <i class="bi bi-plus-circle"></i> Add Hashtag
+                        </button>
+                        <small class="form-text text-muted d-block mt-2">
+                            Mastodon hashtags to monitor for news content (without the # symbol)
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="post-limit" class="form-label">Post Fetch Limit *</label>
+                        <input type="number" class="form-control" id="post-limit" name="post_limit" 
+                               value="{{ settings.post_limit }}" min="10" max="500" required>
+                        <small class="form-text text-muted">
+                            Maximum number of posts to fetch per hashtag (10-500)
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- LLM Configuration -->
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-robot"></i> AI/LLM Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="llm-model" class="form-label">OpenAI Model *</label>
+                        <select class="form-select" id="llm-model" name="llm_model" required>
+                            <option value="gpt-4o" {% if settings.llm_model == 'gpt-4o' %}selected{% endif %}>GPT-4o (Latest)</option>
+                            <option value="gpt-4o-mini" {% if settings.llm_model == 'gpt-4o-mini' %}selected{% endif %}>GPT-4o Mini (Faster)</option>
+                            <option value="gpt-4-turbo" {% if settings.llm_model == 'gpt-4-turbo' %}selected{% endif %}>GPT-4 Turbo</option>
+                            <option value="gpt-3.5-turbo" {% if settings.llm_model == 'gpt-3.5-turbo' %}selected{% endif %}>GPT-3.5 Turbo (Legacy)</option>
+                        </select>
+                        <small class="form-text text-muted">
+                            Choose the OpenAI model for poll generation
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="llm-temperature" class="form-label">
+                            Temperature: <span id="temp-value">{{ settings.llm_temperature }}</span>
+                        </label>
+                        <input type="range" class="form-range" id="llm-temperature" name="llm_temperature" 
+                               min="0" max="2" step="0.1" value="{{ settings.llm_temperature }}"
+                               oninput="document.getElementById('temp-value').textContent = this.value">
+                        <div class="d-flex justify-content-between">
+                            <small class="text-muted">More Focused (0.0)</small>
+                            <small class="text-muted">More Creative (2.0)</small>
+                        </div>
+                        <small class="form-text text-muted d-block mt-2">
+                            Controls randomness in AI responses. Lower = more consistent, Higher = more creative
+                        </small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="llm-max-tokens" class="form-label">Max Tokens *</label>
+                        <input type="number" class="form-control" id="llm-max-tokens" name="llm_max_tokens" 
+                               value="{{ settings.llm_max_tokens }}" min="100" max="4000" step="100" required>
+                        <small class="form-text text-muted">
+                            Maximum length of AI response (100-4000)
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Prompt Template -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-chat-left-quote"></i> Prompt Template</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="prompt-template" class="form-label">AI Prompt Template *</label>
+                        <textarea class="form-control font-monospace" id="prompt-template" 
+                                  name="poll_prompt_template" rows="15" required>{{ settings.poll_prompt_template }}</textarea>
+                        <small class="form-text text-muted">
+                            Template for instructing the AI to generate polls. Use <code>{posts}</code> as placeholder for post content.
+                            <br><strong>Important:</strong> Must request JSON array output format.
+                        </small>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Warning:</strong>
+                        Modifying the prompt template may affect poll quality. Ensure the prompt explicitly asks for:
+                        <ul class="mb-0">
+                            <li>JSON array format</li>
+                            <li>Question field (max 100 chars)</li>
+                            <li>Options array with 2-4 items (max 50 chars each)</li>
+                            <li>Duration in hours (1-168)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Save Button -->
+            <div class="d-grid gap-2 mb-4">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="bi bi-save"></i> Save Settings
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="location.reload()">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset Changes
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Right Column: Help & Info -->
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Configuration Help</h5>
+            </div>
+            <div class="card-body">
+                <h6>Hashtags</h6>
+                <p class="small">
+                    Add hashtags you want to monitor on Mastodon. The system will fetch recent posts 
+                    from these hashtags and use them to generate poll ideas.
+                </p>
+                
+                <h6>Post Limit</h6>
+                <p class="small">
+                    Higher limits mean more context for the AI but may take longer to process. 
+                    Recommended: 50-100 posts.
+                </p>
+                
+                <h6>Model Selection</h6>
+                <p class="small">
+                    <strong>GPT-4o:</strong> Best quality, higher cost<br>
+                    <strong>GPT-4o Mini:</strong> Good balance (recommended)<br>
+                    <strong>GPT-3.5 Turbo:</strong> Fastest, lower cost
+                </p>
+                
+                <h6>Temperature</h6>
+                <p class="small">
+                    <strong>Low (0.0-0.5):</strong> Consistent, predictable polls<br>
+                    <strong>Medium (0.6-1.0):</strong> Balanced creativity<br>
+                    <strong>High (1.1-2.0):</strong> More varied, creative polls
+                </p>
+                
+                <h6>Prompt Engineering</h6>
+                <p class="small">
+                    The prompt template controls how the AI generates polls. Be specific about:
+                </p>
+                <ul class="small">
+                    <li>Desired poll topics</li>
+                    <li>Tone and style</li>
+                    <li>Response format (JSON)</li>
+                    <li>Character limits</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="card border-warning">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0"><i class="bi bi-shield-exclamation"></i> Important Notes</h5>
+            </div>
+            <div class="card-body">
+                <p class="small mb-0">
+                    <strong>Settings are stored in Redis</strong> and apply immediately to new poll generation cycles.
+                    Existing polls are not affected by settings changes.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function addHashtag() {
+    const container = document.getElementById('hashtag-inputs');
+    const newInput = document.createElement('div');
+    newInput.className = 'input-group mb-2 hashtag-input-group';
+    newInput.innerHTML = `
+        <span class="input-group-text">#</span>
+        <input type="text" class="form-control hashtag-input" name="hashtags" 
+               placeholder="hashtag" required>
+        <button type="button" class="btn btn-outline-danger" onclick="removeHashtag(this)">
+            <i class="bi bi-trash"></i>
+        </button>
+    `;
+    container.appendChild(newInput);
+}
+
+function removeHashtag(button) {
+    const inputs = document.querySelectorAll('.hashtag-input');
+    if (inputs.length <= 1) {
+        alert('You must have at least one hashtag configured.');
+        return;
+    }
+    button.closest('.hashtag-input-group').remove();
+}
+
+// Form validation
+document.getElementById('settings-form').addEventListener('submit', function(e) {
+    const hashtags = document.querySelectorAll('.hashtag-input');
+    let valid = true;
+    let errors = [];
+    
+    // Check hashtags
+    if (hashtags.length === 0) {
+        errors.push('At least one hashtag is required');
+        valid = false;
+    }
+    
+    hashtags.forEach((input, index) => {
+        if (input.value.trim() === '') {
+            errors.push(`Hashtag ${index + 1} cannot be empty`);
+            valid = false;
+        }
+    });
+    
+    // Check post limit
+    const postLimit = parseInt(document.getElementById('post-limit').value);
+    if (postLimit < 10 || postLimit > 500) {
+        errors.push('Post limit must be between 10 and 500');
+        valid = false;
+    }
+    
+    // Check max tokens
+    const maxTokens = parseInt(document.getElementById('llm-max-tokens').value);
+    if (maxTokens < 100 || maxTokens > 4000) {
+        errors.push('Max tokens must be between 100 and 4000');
+        valid = false;
+    }
+    
+    // Check prompt template
+    const prompt = document.getElementById('prompt-template').value.trim();
+    if (prompt === '') {
+        errors.push('Prompt template cannot be empty');
+        valid = false;
+    }
+    
+    if (!valid) {
+        e.preventDefault();
+        alert('Please fix the following errors:\n\n' + errors.join('\n'));
+    }
+});
+</script>
+{% endblock %}

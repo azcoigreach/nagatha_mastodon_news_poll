@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # Application Settings
     log_level: str = Field(default="INFO")
     environment: str = Field(default="development")
+    secret_key: str = Field(default="change-this-to-a-random-secret-key")
     
     class Config:
         env_file = ".env"

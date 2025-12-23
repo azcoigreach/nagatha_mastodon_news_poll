@@ -198,6 +198,78 @@ class PollStorage:
             print(f"Error getting all polls: {e}")
             return []
     
+    def list_polls_paginated(self, status_filter: Optional[str] = None, page: int = 1, page_size: int = 50) -> List[PollRecord]:
+        """
+        Get polls with pagination and optional status filtering.
+        
+        Args:
+            status_filter: Optional status to filter by (e.g., 'pending', 'approved', 'posted')
+            page: Page number (1-indexed)
+            page_size: Number of polls per page
+            
+        Returns:
+            List of PollRecords for the requested page
+        """
+        try:
+            if status_filter:
+                # Get polls for specific status
+                status_key = f"{self.POLL_PREFIX}status:{status_filter}"
+                poll_ids = list(self.redis_client.smembers(status_key))
+            else:
+                # Get all polls
+                poll_ids = list(self.redis_client.smembers(self.POLL_LIST_KEY))
+            
+            # Sort by ID (reverse for newest first)
+            poll_ids = sorted(poll_ids, reverse=True)
+            
+            # Calculate pagination
+            offset = (page - 1) * page_size
+            paginated_ids = poll_ids[offset:offset + page_size]
+            
+            # Fetch polls
+            polls = []
+            for poll_id in paginated_ids:
+                poll = self.get_poll(poll_id)
+                if poll:
+                    polls.append(poll)
+            
+            return polls
+        except Exception as e:
+            print(f"Error listing polls: {e}")
+            return []
+    
+    def update_poll(self, poll: PollRecord) -> bool:
+        """
+        Update an existing poll.
+        
+        Args:
+            poll: PollRecord to update
+            
+        Returns:
+            True if successful
+        """
+        try:
+            key = f"{self.POLL_PREFIX}{poll.id}"
+            data = poll.model_dump_json()
+            
+            # Update poll data
+            self.redis_client.set(key, data)
+            
+            # Update status sets - remove from old status, add to new status
+            for status in PollStatus:
+                status_key = f"{self.POLL_PREFIX}status:{status.value}"
+                if status.value == poll.status.value:
+                    # Add to current status set
+                    self.redis_client.sadd(status_key, poll.id)
+                else:
+                    # Remove from other status sets
+                    self.redis_client.srem(status_key, poll.id)
+            
+            return True
+        except Exception as e:
+            print(f"Error updating poll: {e}")
+            return False
+    
     def get_settings(self) -> AppSettings:
         """
         Get application settings from Redis.

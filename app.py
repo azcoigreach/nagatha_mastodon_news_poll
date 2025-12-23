@@ -1,11 +1,19 @@
 """FastAPI application for Mastodon Poll Provider."""
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, status, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 
 from config import settings
+
+# Setup logging
+logger = logging.getLogger(__name__)
 from models import (
     PollRecord,
     PollStatus,
@@ -23,8 +31,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Add session middleware for flash messages
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key or "default-secret-key-change-in-production")
+
 # Initialize storage
 storage = PollStorage()
+
+# Setup templates and static files
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
 # Health check
@@ -552,3 +568,301 @@ async def queue_post_poll(request: PostPollRequest) -> Dict[str, Any]:
         "message": "Post poll task queued",
         "status": "pending"
     }
+
+
+# ========== Web UI Routes ==========
+
+def flash_message(request: Request, message: str, message_type: str = "info"):
+    """Add a flash message to the session."""
+    if "_messages" not in request.session:
+        request.session["_messages"] = []
+    request.session["_messages"].append({"text": message, "type": message_type})
+
+
+def clear_flash_messages(request: Request):
+    """Clear flash messages from the session."""
+    if "_messages" in request.session:
+        del request.session["_messages"]
+
+
+@app.post("/clear-messages")
+async def clear_messages(request: Request):
+    """Clear flash messages (called by JS after display)."""
+    clear_flash_messages(request)
+    return {"success": True}
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Dashboard home page."""
+    stats = storage.get_statistics()
+    current_settings = storage.get_settings()
+    
+    # Get recent polls
+    recent_polls = storage.list_polls_paginated(page=1, page_size=10)
+    
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "stats": stats,
+        "current_settings": current_settings,
+        "recent_polls": recent_polls
+    })
+
+
+@app.get("/polls-ui", response_class=HTMLResponse)
+async def polls_list(request: Request, status: Optional[str] = None, page: int = 1):
+    """Poll moderation queue page."""
+    page_size = 50
+    status_filter = status if status and status != "all" else None
+    
+    # Get polls
+    polls = storage.list_polls_paginated(
+        status_filter=status_filter,
+        page=page,
+        page_size=page_size
+    )
+    
+    # Get statistics for tab badges
+    stats = storage.get_statistics()
+    total_count = stats.get("total_polls", 0)
+    by_status = stats.get("by_status", {})
+    
+    # Calculate pagination
+    if status_filter:
+        total_items = by_status.get(status_filter, 0)
+    else:
+        total_items = total_count
+    
+    total_pages = (total_items + page_size - 1) // page_size
+    
+    # Clear flash messages from previous action
+    messages = request.session.get("_messages", [])
+    clear_flash_messages(request)
+    # Re-add them for this render only
+    if messages:
+        request.session["_messages"] = messages
+    
+    return templates.TemplateResponse("polls_list.html", {
+        "request": request,
+        "polls": polls,
+        "status_filter": status_filter or "all",
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_count": total_count,
+        "pending_count": by_status.get("pending", 0),
+        "approved_count": by_status.get("approved", 0),
+        "posted_count": by_status.get("posted", 0),
+        "rejected_count": by_status.get("rejected", 0),
+        "failed_count": by_status.get("failed", 0),
+    })
+
+
+@app.get("/polls-ui/{poll_id}", response_class=HTMLResponse)
+async def poll_detail(request: Request, poll_id: str):
+    """Poll detail and edit page."""
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        flash_message(request, f"Poll {poll_id} not found", "danger")
+        return RedirectResponse(url="/polls-ui", status_code=303)
+    
+    # Fetch source posts if available
+    source_posts = []
+    if poll.source_posts:
+        from tasks import get_mastodon_client
+        try:
+            mastodon = get_mastodon_client()
+            for post_id in poll.source_posts[:10]:  # Limit to 10 posts
+                try:
+                    status = mastodon.status(post_id)
+                    source_posts.append({
+                        "id": str(status["id"]),
+                        "content": status["content"],
+                        "created_at": status["created_at"].isoformat() if hasattr(status["created_at"], "isoformat") else str(status["created_at"]),
+                        "url": status.get("url", ""),
+                        "account_username": status["account"]["username"],
+                        "hashtags": [t["name"] for t in status.get("tags", [])]
+                    })
+                except Exception as e:
+                    logger.error(f"Error fetching source post {post_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error initializing Mastodon client: {e}")
+    
+    return templates.TemplateResponse("poll_detail.html", {
+        "request": request,
+        "poll": poll,
+        "source_posts": source_posts
+    })
+
+
+@app.post("/polls-ui/{poll_id}/update")
+async def update_poll_ui(
+    request: Request,
+    poll_id: str,
+    question: str = Form(...),
+    option_0: str = Form(...),
+    option_1: str = Form(...),
+    option_2: str = Form(""),
+    option_3: str = Form(""),
+    duration_hours: int = Form(...)
+):
+    """Update poll from form submission."""
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        flash_message(request, f"Poll {poll_id} not found", "danger")
+        return RedirectResponse(url="/polls-ui", status_code=303)
+    
+    if poll.status != PollStatus.PENDING:
+        flash_message(request, "Only pending polls can be edited", "warning")
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+    
+    # Build options list
+    options = []
+    for opt_text in [option_0, option_1, option_2, option_3]:
+        if opt_text.strip():
+            options.append(PollOption(text=opt_text.strip(), votes=0))
+    
+    if len(options) < 2 or len(options) > 4:
+        flash_message(request, "Poll must have 2-4 options", "danger")
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+    
+    # Update poll data
+    poll.poll_data = PollData(
+        question=question,
+        options=options,
+        duration_hours=duration_hours
+    )
+    poll.updated_at = datetime.utcnow()
+    
+    success = storage.update_poll(poll)
+    if success:
+        flash_message(request, "Poll updated successfully", "success")
+    else:
+        flash_message(request, "Failed to update poll", "danger")
+    
+    return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+
+
+@app.post("/polls-ui/{poll_id}/moderate")
+async def moderate_poll_ui(
+    request: Request,
+    poll_id: str,
+    approved: str = Form(...),
+    notes: str = Form("")
+):
+    """Moderate poll from form submission."""
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        flash_message(request, f"Poll {poll_id} not found", "danger")
+        return RedirectResponse(url="/polls-ui", status_code=303)
+    
+    is_approved = approved.lower() == "true"
+    
+    if is_approved:
+        poll.status = PollStatus.APPROVED
+        flash_message(request, "Poll approved successfully", "success")
+    else:
+        poll.status = PollStatus.REJECTED
+        flash_message(request, "Poll rejected", "info")
+    
+    poll.moderated_at = datetime.utcnow()
+    poll.moderator_notes = notes
+    poll.updated_at = datetime.utcnow()
+    
+    success = storage.update_poll(poll)
+    if not success:
+        flash_message(request, "Failed to update poll status", "danger")
+    
+    return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+
+
+@app.post("/polls-ui/{poll_id}/delete")
+async def delete_poll_ui(request: Request, poll_id: str):
+    """Delete poll from UI."""
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        flash_message(request, f"Poll {poll_id} not found", "danger")
+        return RedirectResponse(url="/polls-ui", status_code=303)
+    
+    if poll.status != PollStatus.PENDING:
+        flash_message(request, "Only pending polls can be deleted", "warning")
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+    
+    success = storage.delete_poll(poll_id)
+    if success:
+        flash_message(request, "Poll deleted successfully", "success")
+    else:
+        flash_message(request, "Failed to delete poll", "danger")
+    
+    return RedirectResponse(url="/polls-ui", status_code=303)
+
+
+@app.post("/polls-ui/{poll_id}/post")
+async def post_poll_ui(request: Request, poll_id: str):
+    """Post poll to Mastodon from UI."""
+    from tasks import post_poll_to_mastodon
+    
+    poll = storage.get_poll(poll_id)
+    if not poll:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Poll {poll_id} not found"
+        )
+    
+    if poll.status != PollStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Poll must be approved before posting (current status: {poll.status.value})"
+        )
+    
+    # Queue the task
+    task = post_poll_to_mastodon.delay(poll_id=poll_id)
+    
+    return {
+        "success": True,
+        "task_id": task.id,
+        "poll_id": poll_id,
+        "message": "Post poll task queued"
+    }
+
+
+@app.get("/settings-ui", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """Settings configuration page."""
+    settings_data = storage.get_settings()
+    
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "settings": settings_data
+    })
+
+
+@app.post("/settings-ui/update")
+async def update_settings_ui(
+    request: Request,
+    hashtags: List[str] = Form(...),
+    post_limit: int = Form(...),
+    llm_model: str = Form(...),
+    llm_temperature: float = Form(...),
+    llm_max_tokens: int = Form(...),
+    poll_prompt_template: str = Form(...)
+):
+    """Update settings from form submission."""
+    # Clean hashtags
+    clean_hashtags = [tag.strip().lstrip('#') for tag in hashtags if tag.strip()]
+    
+    new_settings = AppSettings(
+        hashtags=[f"#{tag}" if not tag.startswith('#') else tag for tag in clean_hashtags],
+        post_limit=post_limit,
+        llm_model=llm_model,
+        llm_temperature=llm_temperature,
+        llm_max_tokens=llm_max_tokens,
+        poll_prompt_template=poll_prompt_template
+    )
+    
+    success = storage.save_settings(new_settings)
+    if success:
+        flash_message(request, "Settings updated successfully", "success")
+    else:
+        flash_message(request, "Failed to update settings", "danger")
+    
+    return RedirectResponse(url="/settings-ui", status_code=303)

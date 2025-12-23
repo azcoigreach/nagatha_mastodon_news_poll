@@ -1,0 +1,179 @@
+/* Custom styles for Mastodon Poll Manager */
+
+:root {
+    --mastodon-purple: #6364ff;
+    --mastodon-bg: #282c37;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+/* Status badges */
+.badge-pending {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.badge-approved {
+    background-color: #28a745;
+}
+
+.badge-rejected {
+    background-color: #6c757d;
+}
+
+.badge-posted {
+    background-color: #17a2b8;
+}
+
+.badge-failed {
+    background-color: #dc3545;
+}
+
+/* Poll preview styling (Mastodon-like) */
+.poll-preview {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.poll-preview .poll-question {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    color: #212529;
+}
+
+.poll-preview .poll-option {
+    background: #fff;
+    border: 2px solid #e1e8ed;
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.poll-preview .poll-option:hover {
+    border-color: var(--mastodon-purple);
+    background: #f0f0ff;
+}
+
+.poll-preview .poll-meta {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-top: 0.75rem;
+}
+
+/* Source posts preview */
+.source-post {
+    background: #fff;
+    border-left: 4px solid var(--mastodon-purple);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.source-post .post-author {
+    font-weight: 600;
+    color: var(--mastodon-purple);
+    margin-bottom: 0.5rem;
+}
+
+.source-post .post-content {
+    color: #212529;
+    line-height: 1.6;
+}
+
+.source-post .post-meta {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+/* Character counter */
+.char-counter {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.char-counter.warning {
+    color: #ffc107;
+    font-weight: 600;
+}
+
+.char-counter.danger {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+/* Stats cards on dashboard */
+.stat-card {
+    border-left: 4px solid;
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.stat-card.stat-pending {
+    border-left-color: #ffc107;
+}
+
+.stat-card.stat-approved {
+    border-left-color: #28a745;
+}
+
+.stat-card.stat-posted {
+    border-left-color: #17a2b8;
+}
+
+.stat-card.stat-total {
+    border-left-color: var(--mastodon-purple);
+}
+
+/* Poll list table */
+.poll-table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.poll-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Loading spinner */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}
+
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .poll-preview {
+        padding: 0.75rem;
+    }
+    
+    .source-post {
+        padding: 0.75rem;
+    }
+}
