@@ -33,6 +33,7 @@ class PollStorage:
         self.POLL_PREFIX = "mastodon_poll:"
         self.SETTINGS_KEY = "mastodon_poll:settings"
         self.POLL_LIST_KEY = "mastodon_poll:list"
+        self.USED_POSTS_KEY = "mastodon_poll:used_posts"
     
     def generate_poll_id(self) -> str:
         """Generate a unique poll ID."""
@@ -219,21 +220,21 @@ class PollStorage:
                 # Get all polls
                 poll_ids = list(self.redis_client.smembers(self.POLL_LIST_KEY))
             
-            # Sort by ID (reverse for newest first)
-            poll_ids = sorted(poll_ids, reverse=True)
+            # Fetch all polls to sort by created_at
+            all_polls = []
+            for poll_id in poll_ids:
+                poll = self.get_poll(poll_id)
+                if poll:
+                    all_polls.append(poll)
+            
+            # Sort by created_at (newest first)
+            all_polls.sort(key=lambda p: p.created_at, reverse=True)
             
             # Calculate pagination
             offset = (page - 1) * page_size
-            paginated_ids = poll_ids[offset:offset + page_size]
+            paginated_polls = all_polls[offset:offset + page_size]
             
-            # Fetch polls
-            polls = []
-            for poll_id in paginated_ids:
-                poll = self.get_poll(poll_id)
-                if poll:
-                    polls.append(poll)
-            
-            return polls
+            return paginated_polls
         except Exception as e:
             print(f"Error listing polls: {e}")
             return []
@@ -328,3 +329,39 @@ class PollStorage:
         except Exception as e:
             print(f"Error getting statistics: {e}")
             return {"error": str(e)}
+
+    # --- Post usage tracking ---
+    def mark_posts_used(self, post_ids: List[str]) -> bool:
+        """Mark Mastodon post IDs as used to avoid re-processing.
+
+        Args:
+            post_ids: List of Mastodon status IDs
+
+        Returns:
+            True if successful
+        """
+        try:
+            if not post_ids:
+                return True
+            # Use Redis set for deduplication
+            self.redis_client.sadd(self.USED_POSTS_KEY, *post_ids)
+            return True
+        except Exception as e:
+            print(f"Error marking posts used: {e}")
+            return False
+
+    def get_used_posts(self) -> List[str]:
+        """Return list of Mastodon post IDs previously used for polls."""
+        try:
+            return list(self.redis_client.smembers(self.USED_POSTS_KEY))
+        except Exception:
+            return []
+
+    def clear_used_posts(self) -> bool:
+        """Clear the used posts set (maintenance)."""
+        try:
+            self.redis_client.delete(self.USED_POSTS_KEY)
+            return True
+        except Exception as e:
+            print(f"Error clearing used posts: {e}")
+            return False

@@ -36,6 +36,7 @@ class PollData(BaseModel):
     options: List[PollOption]
     duration_hours: int = Field(default=24, ge=1, le=168)  # 1 hour to 7 days
     hashtags: List[str] = []  # Hashtags to include inline with the poll
+    reasoning: Optional[str] = None  # LLM explanation of why this poll is relevant
     
 
 class PollRecord(BaseModel):
@@ -56,6 +57,13 @@ class AppSettings(BaseModel):
     """Configurable application settings via API."""
     hashtags: List[str] = ["#uspol"]
     post_limit: int = Field(default=100, ge=10, le=500)
+    # Ingestion filters
+    time_window_hours: int = Field(default=72, ge=1, le=336, description="Only include posts newer than this many hours")
+    exclude_used_posts: bool = Field(default=True, description="Exclude posts already used to generate polls")
+    excluded_accounts: List[str] = Field(
+        default=[],
+        description="List of Mastodon usernames to exclude from ingestion (e.g., ['bot_account', 'spam_user'])"
+    )
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     llm_max_tokens: int = Field(default=1500, ge=100, le=4000)
@@ -65,16 +73,24 @@ class AppSettings(BaseModel):
 {posts}
 
 Based on these posts, generate poll topics that would engage the community. For each poll:
-1. Create a clear, concise question (max 100 characters)
-2. Provide 2-4 answer options
-3. Focus on current events, news, or political topics mentioned in the posts
-4. Make the poll balanced and non-partisan
+1. Create a descriptive question with context (max 300 characters)
+   - Start with brief context about the topic/issue
+   - Then ask the specific question
+   - Example: "Recent reports show X has happened. What should be done about Y?"
+2. Provide 2-4 answer options (max 50 characters each)
+3. Choose an appropriate poll duration in hours (1-168):
+   - Breaking news/fast-moving topics: 6-24 hours
+   - Current events/ongoing issues: 24-72 hours
+   - Broader questions/debates: 72-168 hours
+4. Focus on current events, news, or political topics mentioned in the posts
+5. Make the poll balanced and non-partisan
 
 Return your response as a JSON array of poll objects with this structure:
 [
   {{
-    "question": "Poll question here?",
+    "question": "Context about the topic. What is your specific question?",
     "options": ["Option 1", "Option 2", "Option 3"],
+    "duration_hours": 48,
     "reasoning": "Brief explanation of why this poll is relevant"
   }}
 ]

@@ -59,10 +59,11 @@
                 <thead>
                     <tr>
                         <th style="width: 10%">Status</th>
-                        <th style="width: 45%">Question</th>
+                        <th style="width: 40%">Question</th>
+                        <th style="width: 15%">Hashtags</th>
                         <th style="width: 15%">Options</th>
-                        <th style="width: 15%">Created</th>
-                        <th style="width: 15%">Actions</th>
+                        <th style="width: 10%">Created</th>
+                        <th style="width: 10%">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -81,6 +82,15 @@
                                onclick="event.stopPropagation();">
                                 <i class="bi bi-box-arrow-up-right"></i> View on Mastodon
                             </a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if poll.poll_data.hashtags %}
+                                {% for tag in poll.poll_data.hashtags %}
+                                <span class="badge bg-light text-dark me-1">{{ tag }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted small">None</span>
                             {% endif %}
                         </td>
                         <td>

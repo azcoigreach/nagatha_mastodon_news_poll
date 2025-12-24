@@ -1,6 +1,7 @@
 """FastAPI application for Mastodon Poll Provider."""
 import logging
 from typing import Dict, Any, List, Optional
+import re
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, status, Request, Form
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
+from celery.result import AsyncResult
 
 from config import settings
 
@@ -278,6 +280,7 @@ class PollUpdateRequest(BaseModel):
     question: Optional[str] = None
     options: Optional[List[str]] = None
     duration_hours: Optional[int] = None
+    hashtags: Optional[List[str]] = None
 
 
 @app.put("/polls/{poll_id}")
@@ -308,7 +311,13 @@ async def update_poll(poll_id: str, update: PollUpdateRequest) -> Dict[str, Any]
     
     # Update fields
     if update.question is not None:
-        poll.poll_data.question = update.question[:100]  # Mastodon limit
+        # Validate question length (allow up to 300 chars)
+        if len(update.question) > 300:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Question must be 300 characters or less"
+            )
+        poll.poll_data.question = update.question
     
     if update.options is not None:
         if len(update.options) < 2 or len(update.options) > 4:
@@ -325,6 +334,28 @@ async def update_poll(poll_id: str, update: PollUpdateRequest) -> Dict[str, Any]
                 detail="Duration must be between 1 and 168 hours"
             )
         poll.poll_data.duration_hours = update.duration_hours
+
+    if update.hashtags is not None:
+        normalized = []
+        seen = set()
+        for raw in update.hashtags:
+            tag = raw.strip().lstrip("#")
+            if not tag:
+                continue
+            formatted = f"#{tag}"
+            if formatted not in seen:
+                normalized.append(formatted)
+                seen.add(formatted)
+        poll.poll_data.hashtags = normalized
+
+    # Validate combined message length (question + space + hashtags) <= 500
+    hashtag_text = " ".join(poll.poll_data.hashtags) if poll.poll_data.hashtags else ""
+    total_message_len = len(poll.poll_data.question) + (1 if hashtag_text else 0) + len(hashtag_text)
+    if total_message_len > 500:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Total message length (question + hashtags) must be 500 characters or less. Current length: {total_message_len}"
+        )
     
     poll.updated_at = datetime.utcnow()
     storage.save_poll(poll)
@@ -361,7 +392,20 @@ async def moderate_poll(poll_id: str, moderation: ModerationRequest) -> Dict[str
     if moderation.approved:
         # Apply edits if provided
         if moderation.edited_question:
-            poll.poll_data.question = moderation.edited_question[:100]
+            if len(moderation.edited_question) > 300:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Question must be 300 characters or less"
+                )
+            poll.poll_data.question = moderation.edited_question
+            # Validate combined message length after edit
+            hashtag_text = " ".join(poll.poll_data.hashtags) if poll.poll_data.hashtags else ""
+            total_message_len = len(poll.poll_data.question) + (1 if hashtag_text else 0) + len(hashtag_text)
+            if total_message_len > 500:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Total message length (question + hashtags) must be 500 characters or less. Current length: {total_message_len}"
+                )
         
         if moderation.edited_options:
             if len(moderation.edited_options) < 2 or len(moderation.edited_options) > 4:
@@ -508,6 +552,26 @@ async def update_settings(new_settings: AppSettings) -> Dict[str, Any]:
         )
 
 
+@app.post("/settings/clear-used-posts")
+async def clear_used_posts_api() -> Dict[str, Any]:
+    """Clear the cache of previously used Mastodon posts (API)."""
+    try:
+        success = storage.clear_used_posts()
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to clear used posts cache"
+            )
+        return {"success": True, "message": "Used posts cache cleared"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error clearing used posts: {str(e)}"
+        )
+
+
 # ========== Statistics Endpoints ==========
 
 @app.get("/stats")
@@ -557,6 +621,67 @@ async def run_news_cycle(request: RunCycleRequest = None) -> Dict[str, Any]:
         "message": "News cycle task queued",
         "status": "pending"
     }
+
+
+@app.get("/task-status/{task_id}")
+async def get_task_status(task_id: str) -> Dict[str, Any]:
+    """
+    Check the status of a Celery task.
+    
+    Args:
+        task_id: The Celery task ID
+        
+    Returns:
+        Task status information
+    """
+    from tasks import app as celery_app
+    
+    task_result = AsyncResult(task_id, app=celery_app)
+    
+    response = {
+        "task_id": task_id,
+        "status": task_result.state,
+        "ready": task_result.ready()
+    }
+    
+    # Add result if completed
+    if task_result.ready():
+        if task_result.successful():
+            result = task_result.result
+            response["result"] = result
+            # Extract useful info from result
+            if isinstance(result, dict):
+                response["success"] = result.get("success", False)
+                # Prefer explicit count if present, else try polls array length
+                if "polls_generated" in result:
+                    response["polls_generated"] = result.get("polls_generated", 0)
+                elif isinstance(result.get("polls"), list):
+                    response["polls_generated"] = len(result.get("polls", []))
+                else:
+                    response["polls_generated"] = 0
+                response["posts_fetched"] = result.get("posts_fetched")
+                response["stage"] = result.get("stage", "complete")
+        else:
+            response["success"] = False
+            response["error"] = str(task_result.result)
+    else:
+        # Task is still running - provide info about state
+        if task_result.state == "PENDING":
+            response["message"] = "Task is queued and waiting to start"
+        elif task_result.state == "STARTED":
+            response["message"] = "Task is running"
+        elif task_result.state == "PROGRESS":
+            # Extract progress metadata
+            info = task_result.info or {}
+            response["stage"] = info.get("stage", "unknown")
+            response["message"] = info.get("message", "Processing...")
+            response["posts_fetched"] = info.get("posts_fetched")
+        elif task_result.state == "RETRY":
+            response["message"] = "Task is being retried"
+        else:
+            response["message"] = f"Task state: {task_result.state}"
+    
+    return response
 
 
 class PostPollRequest(BaseModel):
@@ -736,7 +861,8 @@ async def update_poll_ui(
     option_1: str = Form(...),
     option_2: str = Form(""),
     option_3: str = Form(""),
-    duration_hours: int = Form(...)
+    duration_hours: int = Form(...),
+    hashtags: str = Form("")
 ):
     """Update poll from form submission."""
     poll = storage.get_poll(poll_id)
@@ -752,17 +878,53 @@ async def update_poll_ui(
     options = []
     for opt_text in [option_0, option_1, option_2, option_3]:
         if opt_text.strip():
-            options.append(PollOption(text=opt_text.strip(), votes=0))
+            # Enforce 50-char max per option
+            opt_clean = opt_text.strip()
+            if len(opt_clean) > 50:
+                flash_message(request, "Each option must be 50 characters or less", "danger")
+                return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+            options.append(PollOption(text=opt_clean, votes=0))
     
     if len(options) < 2 or len(options) > 4:
         flash_message(request, "Poll must have 2-4 options", "danger")
         return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
     
+    # Normalize hashtags from form (comma or space separated)
+    tag_parts = re.split(r"[\s,]+", hashtags.strip()) if hashtags else []
+    normalized_tags = []
+    seen = set()
+    for raw in tag_parts:
+        tag = raw.strip().lstrip("#")
+        if not tag:
+            continue
+        formatted = f"#{tag}"
+        if formatted not in seen:
+            normalized_tags.append(formatted)
+            seen.add(formatted)
+
+    # Validate question length (<= 300)
+    if len(question) > 300:
+        flash_message(request, "Question must be 300 characters or less", "danger")
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+
+    # Validate combined message length (question + hashtags) <= 500
+    final_hashtags = normalized_tags or poll.poll_data.hashtags
+    hashtag_text = " ".join(final_hashtags) if final_hashtags else ""
+    total_message_len = len(question) + (1 if hashtag_text else 0) + len(hashtag_text)
+    if total_message_len > 500:
+        flash_message(
+            request,
+            f"Total message (question + hashtags) must be 500 characters or less. Current length: {total_message_len}",
+            "danger"
+        )
+        return RedirectResponse(url=f"/polls-ui/{poll_id}", status_code=303)
+
     # Update poll data
     poll.poll_data = PollData(
         question=question,
         options=options,
-        duration_hours=duration_hours
+        duration_hours=duration_hours,
+        hashtags=final_hashtags
     )
     poll.updated_at = datetime.utcnow()
     
@@ -902,6 +1064,9 @@ async def update_settings_ui(
     request: Request,
     hashtags: List[str] = Form(...),
     post_limit: int = Form(...),
+    time_window_hours: int = Form(...),
+    exclude_used_posts: bool = Form(False),
+    excluded_accounts: List[str] = Form(default=[]),
     llm_model: str = Form(...),
     llm_temperature: float = Form(...),
     llm_max_tokens: int = Form(...),
@@ -911,9 +1076,20 @@ async def update_settings_ui(
     # Clean hashtags
     clean_hashtags = [tag.strip().lstrip('#') for tag in hashtags if tag.strip()]
     
+    # Clean excluded accounts (remove @ if present, filter empty)
+    clean_excluded = [acc.strip().lstrip('@') for acc in excluded_accounts if acc.strip()]
+
+    # Validate time window hours
+    if time_window_hours < 1 or time_window_hours > 336:
+        flash_message(request, "Time window must be between 1 and 336 hours", "danger")
+        return RedirectResponse(url="/settings-ui", status_code=303)
+    
     new_settings = AppSettings(
         hashtags=[f"#{tag}" if not tag.startswith('#') else tag for tag in clean_hashtags],
         post_limit=post_limit,
+        time_window_hours=time_window_hours,
+        exclude_used_posts=exclude_used_posts,
+        excluded_accounts=clean_excluded,
         llm_model=llm_model,
         llm_temperature=llm_temperature,
         llm_max_tokens=llm_max_tokens,
@@ -926,4 +1102,19 @@ async def update_settings_ui(
     else:
         flash_message(request, "Failed to update settings", "danger")
     
+    return RedirectResponse(url="/settings-ui", status_code=303)
+
+
+@app.post("/settings-ui/clear-used-posts")
+async def clear_used_posts_ui(request: Request):
+    """Clear the used posts cache from Settings UI."""
+    try:
+        success = storage.clear_used_posts()
+        if success:
+            flash_message(request, "Used posts cache cleared", "success")
+        else:
+            flash_message(request, "Failed to clear used posts cache", "danger")
+    except Exception as e:
+        logger.error(f"Error clearing used posts: {e}")
+        flash_message(request, "Error clearing used posts cache", "danger")
     return RedirectResponse(url="/settings-ui", status_code=303)

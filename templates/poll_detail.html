@@ -44,11 +44,11 @@
                 <form id="poll-edit-form" method="post" action="/polls-ui/{{ poll.id }}/update">
                     <div class="mb-3">
                         <label for="poll-question" class="form-label">Question *</label>
-                        <textarea class="form-control" id="poll-question" name="question" rows="3" 
-                                  maxlength="100" required>{{ poll.poll_data.question }}</textarea>
+                        <textarea class="form-control" id="poll-question" name="question" rows="5" 
+                                  maxlength="300" required>{{ poll.poll_data.question }}</textarea>
                         <div class="d-flex justify-content-between">
-                            <small class="form-text text-muted">Max 100 characters</small>
-                            <small class="char-counter" id="question-counter">100</small>
+                            <small class="form-text text-muted">Max 300 characters - provide context then ask question</small>
+                            <small class="char-counter" id="question-counter">300</small>
                         </div>
                     </div>
                     
@@ -74,6 +74,21 @@
                                value="{{ poll.poll_data.duration_hours }}" min="1" max="168" required>
                         <small class="form-text text-muted">1 to 168 hours (7 days)</small>
                     </div>
+
+                    <div class="mb-3">
+                        <label for="poll-hashtags" class="form-label">Hashtags</label>
+                        <input type="text" class="form-control" id="poll-hashtags" name="hashtags"
+                               value="{{ poll.poll_data.hashtags | join(' ') }}"
+                               placeholder="#news #topic1 #topic2">
+                        <small class="form-text text-muted">Separate with spaces or commas. Leading # is optional.</small>
+                    </div>
+
+                    {% if poll.poll_data.reasoning %}
+                    <div class="alert alert-light">
+                        <h6 class="text-muted mb-2"><i class="bi bi-lightbulb"></i> AI Reasoning</h6>
+                        <small>{{ poll.poll_data.reasoning }}</small>
+                    </div>
+                    {% endif %}
                     
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">
@@ -111,6 +126,26 @@
                         ({% if poll.poll_data.duration_hours >= 24 %}{{ (poll.poll_data.duration_hours / 24)|round(1) }} days{% else %}{{ poll.poll_data.duration_hours }} hours{% endif %})
                     </p>
                 </div>
+
+                <div class="mb-3">
+                    <h6 class="text-muted">Hashtags</h6>
+                    {% if poll.poll_data.hashtags %}
+                        {% for tag in poll.poll_data.hashtags %}
+                        <span class="badge bg-light text-dark me-1">{{ tag }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">None</span>
+                    {% endif %}
+                </div>
+
+                {% if poll.poll_data.reasoning %}
+                <div class="mb-3">
+                    <h6 class="text-muted">AI Reasoning</h6>
+                    <div class="alert alert-light mb-0">
+                        <i class="bi bi-lightbulb"></i> {{ poll.poll_data.reasoning }}
+                    </div>
+                </div>
+                {% endif %}
                 {% endif %}
                 
                 <!-- Metadata -->
@@ -227,7 +262,9 @@
             </div>
             <div class="card-body">
                 <div class="poll-preview" id="poll-detail-refresh">
-                    <div class="poll-question" id="preview-question">{{ poll.poll_data.question }}</div>
+                    <div class="poll-question" id="preview-question">
+                        {{ poll.poll_data.question }}{% if poll.poll_data.hashtags %} {{ poll.poll_data.hashtags | join(' ') }}{% endif %}
+                    </div>
                     
                     {% for i in range(4) %}
                     <div class="poll-option" 

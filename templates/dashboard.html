@@ -186,6 +186,82 @@
 
 {% block extra_scripts %}
 <script>
+let taskStatusInterval = null;
+
+function checkTaskStatus(taskId) {
+    fetch(`/task-status/${taskId}`)
+        .then(response => response.json())
+        .then(data => {
+            const resultDiv = document.getElementById('task-result');
+            
+            if (data.ready) {
+                // Task completed
+                clearInterval(taskStatusInterval);
+                
+                if (data.success) {
+                    const count = (data.polls_generated ?? (data.result && (data.result.polls_generated ?? (Array.isArray(data.result.polls) ? data.result.polls.length : 0)))) || 0;
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle"></i> News cycle completed successfully!
+                            <br><small>Generated ${count} poll(s)</small>
+                            <br><small class="text-muted">Reloading dashboard...</small>
+                        </div>
+                    `;
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle"></i> Task failed: ${data.error || 'Unknown error'}
+                            <br><small>Stage: ${data.stage || 'unknown'}</small>
+                        </div>
+                    `;
+                }
+            } else {
+                // Task still running - show status
+                let statusIcon = '<i class="bi bi-hourglass-split"></i>';
+                let statusMessage = data.message || 'Processing...';
+                let stageInfo = '';
+                
+                if (data.status === 'PROGRESS') {
+                    // Show detailed stage information
+                    if (data.stage === 'fetch') {
+                        statusIcon = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+                        statusMessage = data.message || 'Fetching posts from Mastodon...';
+                        stageInfo = '<div class="mt-2"><span class="badge bg-primary">Stage 1/2: Fetch</span></div>';
+                    } else if (data.stage === 'generate') {
+                        statusIcon = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+                        statusMessage = data.message || 'Generating poll ideas with AI...';
+                        if (data.posts_fetched) {
+                            stageInfo = `<div class="mt-2"><span class="badge bg-primary">Stage 2/2: Generate</span> <span class="badge bg-info">${data.posts_fetched} posts fetched</span></div>`;
+                        } else {
+                            stageInfo = '<div class="mt-2"><span class="badge bg-primary">Stage 2/2: Generate</span></div>';
+                        }
+                    }
+                } else if (data.status === 'STARTED') {
+                    statusIcon = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+                    statusMessage = 'Initializing news cycle...';
+                } else if (data.status === 'PENDING') {
+                    statusMessage = 'Task queued, waiting to start...';
+                }
+                
+                resultDiv.innerHTML = `
+                    <div class="alert alert-info">
+                        ${statusIcon} ${statusMessage}
+                        ${stageInfo}
+                        <br><small class="text-muted">Task ID: ${taskId}</small>
+                        <div class="progress mt-2" style="height: 5px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error checking task status:', error);
+        });
+}
+
 document.getElementById('run-cycle-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     
@@ -196,7 +272,7 @@ document.getElementById('run-cycle-form').addEventListener('submit', async funct
     const limit = parseInt(document.getElementById('post-limit').value);
     
     const resultDiv = document.getElementById('task-result');
-    resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Starting news cycle...</div>';
+    resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split"></i> Queuing news cycle task...</div>';
     
     try {
         const response = await fetch('/run-cycle', {
@@ -207,17 +283,20 @@ document.getElementById('run-cycle-form').addEventListener('submit', async funct
         
         const data = await response.json();
         
-        if (response.ok) {
+        if (response.ok && data.task_id) {
+            // Start polling for task status
             resultDiv.innerHTML = `
-                <div class="alert alert-success">
-                    <i class="bi bi-check-circle"></i> News cycle started successfully!
-                    <br><small>Task ID: ${data.task_id}</small>
-                    <br><small class="text-muted">New polls will appear in the moderation queue when ready.</small>
+                <div class="alert alert-info">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                    Task started, checking status...
+                    <br><small class="text-muted">Task ID: ${data.task_id}</small>
                 </div>
             `;
             
-            // Reload stats after a few seconds
-            setTimeout(() => location.reload(), 3000);
+            // Poll every 2 seconds
+            taskStatusInterval = setInterval(() => checkTaskStatus(data.task_id), 2000);
+            // Also check immediately
+            checkTaskStatus(data.task_id);
         } else {
             resultDiv.innerHTML = `
                 <div class="alert alert-danger">
@@ -231,6 +310,13 @@ document.getElementById('run-cycle-form').addEventListener('submit', async funct
                 <i class="bi bi-exclamation-triangle"></i> Network error: ${error.message}
             </div>
         `;
+    }
+});
+
+// Clean up interval when leaving page
+window.addEventListener('beforeunload', () => {
+    if (taskStatusInterval) {
+        clearInterval(taskStatusInterval);
     }
 });
 </script>
